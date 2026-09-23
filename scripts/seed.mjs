@@ -21,6 +21,37 @@ import { applySchema, DEFAULT_DAILY_TARGET } from "../lib/schema.mjs";
 import { generatePassword, hashPassword } from "../lib/crypto.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * Loads .env.local the way Next.js does, so seeding a hosted database is just
+ * `npm run seed` — no shell-specific environment-variable syntax, which
+ * differs between PowerShell, cmd and bash. Real environment variables still
+ * win, so CI can override.
+ */
+function loadEnvLocal() {
+  const file = path.join(root, ".env.local");
+  if (!fs.existsSync(file)) return;
+
+  for (const rawLine of fs.readFileSync(file, "utf8").split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+
+    const key = line.slice(0, eq).trim();
+    // Strip matching surrounding quotes, which people often paste in.
+    const value = line
+      .slice(eq + 1)
+      .trim()
+      .replace(/^(['"])(.*)\1$/, "$2");
+
+    if (key && process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+loadEnvLocal();
+
 const dbPath = process.env.CLIPUR_DB_PATH ?? path.join(root, "data", "clipur.db");
 
 const args = new Set(process.argv.slice(2));
