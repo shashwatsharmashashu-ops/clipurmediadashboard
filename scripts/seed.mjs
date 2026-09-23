@@ -19,6 +19,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { applySchema, DEFAULT_DAILY_TARGET } from "../lib/schema.mjs";
 import { generatePassword, hashPassword } from "../lib/crypto.mjs";
+import { remoteConfig } from "../lib/env.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -58,12 +59,22 @@ const args = new Set(process.argv.slice(2));
 const RESET_CONTENT = args.has("--reset");
 const RESET_PASSWORDS = args.has("--reset-passwords");
 
-// Local file by default; a Turso URL when one is configured, which is how
-// the same script seeds a hosted deployment.
-const url = process.env.TURSO_DATABASE_URL?.trim() || `file:${dbPath}`;
-if (url.startsWith("file:")) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+// Local file by default; a hosted database when one is configured, which is
+// how the same script seeds a deployment.
+const remote = remoteConfig();
+const url = remote?.url ?? `file:${dbPath}`;
+if (!remote) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
-const db = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN?.trim() || undefined });
+if (remote) {
+  console.log(`Seeding the hosted database from ${remote.urlVar}`);
+  if (!remote.tokenVar) {
+    console.warn("  warning: no auth token variable found; the connection may be rejected.");
+  }
+} else {
+  console.log("Seeding the local database file. Set TURSO_DATABASE_URL to seed a deployment.");
+}
+
+const db = createClient({ url, authToken: remote?.authToken });
 await applySchema(db);
 
 /**

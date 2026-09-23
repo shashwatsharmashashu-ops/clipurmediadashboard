@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createClient, type Client, type InArgs, type Transaction } from "@libsql/client";
 import { applySchema } from "./schema.mjs";
+import { remoteConfig } from "./env.mjs";
 
 /**
  * libSQL-backed persistent store.
@@ -19,14 +20,16 @@ import { applySchema } from "./schema.mjs";
 
 const DEFAULT_DB_FILE = path.join(process.cwd(), "data", "clipur.db");
 
-/** Resolves the connection URL, preferring an explicit Turso URL. */
+/** Resolves the connection URL, preferring a hosted database. */
 function resolveUrl(): string {
-  const remote = process.env.TURSO_DATABASE_URL?.trim();
-  if (remote) return remote;
+  const remote = remoteConfig();
+  if (remote) return remote.url;
 
   const filePath = process.env.CLIPUR_DB_PATH?.trim() || DEFAULT_DB_FILE;
   const absolute = path.resolve(filePath);
-  // The driver creates the file but not the directory above it.
+  // The driver creates the file but not the directory above it. On a
+  // serverless host the filesystem is read-only, so this throws — which is
+  // the correct, loud failure: the deployment is missing its database URL.
   fs.mkdirSync(path.dirname(absolute), { recursive: true });
   return `file:${absolute}`;
 }
@@ -42,10 +45,9 @@ const globalForDb = globalThis as unknown as GlobalDb;
 
 export function getClient(): Client {
   if (!globalForDb.__clipurClient) {
-    const url = resolveUrl();
     globalForDb.__clipurClient = createClient({
-      url,
-      authToken: process.env.TURSO_AUTH_TOKEN?.trim() || undefined,
+      url: resolveUrl(),
+      authToken: remoteConfig()?.authToken,
     });
   }
   return globalForDb.__clipurClient;
@@ -135,7 +137,9 @@ export async function isSeeded(): Promise<boolean> {
   return Number(row?.n ?? 0) > 0;
 }
 
-/** True when pointed at a remote Turso database rather than a local file. */
+/** True when pointed at a remote database rather than a local file. */
 export function isRemote(): boolean {
-  return Boolean(process.env.TURSO_DATABASE_URL?.trim());
+  return remoteConfig() !== null;
 }
+
+export { remoteConfig };
