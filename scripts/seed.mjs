@@ -47,7 +47,9 @@ function loadEnvLocal() {
       .trim()
       .replace(/^(['"])(.*)\1$/, "$2");
 
-    if (key && process.env[key] === undefined) process.env[key] = value;
+    // An empty assignment (`KEY=`) is treated as unset, so a placeholder line
+    // left above a real one cannot mask it.
+    if (key && value && !process.env[key]) process.env[key] = value;
   }
 }
 
